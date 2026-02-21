@@ -16,6 +16,7 @@
         <div class="pill">Best: <span id="best">0</span></div>
         <div class="pill">Coins: <span id="coins">0</span></div>
         <div class="pill">Speed: <span id="speed">1.0x</span></div>
+        <div class="pill">P2: <span id="p2score">-</span></div>
       </div>
 
       <div class="actions">
@@ -27,17 +28,22 @@
     <main class="stage">
       <canvas id="game" width="420" height="720"></canvas>
 
+      <!-- Start -->
       <div id="overlay" class="overlay show">
         <div class="card">
           <h1>Neon Highway</h1>
           <p class="muted">
-            Hold <b>A/D</b> or <b>←/→</b> to steer. <b>SPACE</b> pause. <b>R</b> restart.
-            Mouse/touch: hold left/right side of the game.
+            Keyboard: hold <b>A/D</b> or <b>←/→</b> (lane-by-lane).<br/>
+            Mouse mode (Settings): car follows mouse X.<br/>
+            SPACE = pause, R = restart.
           </p>
-          <button id="btnStart" class="btn">Play</button>
+
+          <button id="btnStartSingle" class="btn">Single Player</button>
+          <button id="btnStartMulti" class="btn" style="margin-top:10px;">Multiplayer (Host/Join)</button>
         </div>
       </div>
 
+      <!-- Gameover -->
       <div id="gameover" class="overlay">
         <div class="card">
           <h2>Game Over</h2>
@@ -47,6 +53,7 @@
         </div>
       </div>
 
+      <!-- Settings -->
       <div id="settings" class="overlay">
         <div class="card">
           <div class="row">
@@ -56,8 +63,24 @@
 
           <div class="form">
             <label>
+              Controls:
+              <select id="setControls" class="select">
+                <option value="keyboard">Keyboard (A/D)</option>
+                <option value="mouse">Mouse follow</option>
+              </select>
+            </label>
+
+            <label>
+              Difficulty:
+              <select id="setDifficulty" class="select">
+                <option value="normal">Normal (4 lanes)</option>
+                <option value="hard">Hard (6 lanes, starts 1.5x, more coins)</option>
+              </select>
+            </label>
+
+            <label>
               Steering smooth (higher = slower/smoother):
-              <input id="setSteer" type="range" min="14" max="40" step="1" />
+              <input id="setSteer" type="range" min="14" max="45" step="1" />
               <span id="setSteerVal" class="val"></span>
             </label>
 
@@ -69,7 +92,7 @@
 
             <label>
               Traffic at start (higher = fewer cars at start):
-              <input id="setTrafficStart" type="range" min="70" max="140" step="5" />
+              <input id="setTrafficStart" type="range" min="70" max="160" step="5" />
               <span id="setTrafficStartVal" class="val"></span>
             </label>
 
@@ -84,21 +107,68 @@
         </div>
       </div>
 
+      <!-- Shop -->
       <div id="shop" class="overlay">
         <div class="card">
           <div class="row">
             <h2>Shop</h2>
             <button id="btnCloseShop" class="miniBtn">Close</button>
           </div>
+
           <p class="muted">Buy cars & map themes with coins. Equip what you own.</p>
           <div id="shopList" class="shopGrid"></div>
+        </div>
+      </div>
+
+      <!-- Multiplayer -->
+      <div id="mp" class="overlay">
+        <div class="card">
+          <div class="row">
+            <h2>Multiplayer</h2>
+            <button id="btnCloseMp" class="miniBtn">Close</button>
+          </div>
+
+          <p class="muted">
+            Serverless P2P (copy/paste):
+            Host creates <b>Offer</b> → send to friend → friend pastes and creates <b>Answer</b> → send back → host pastes Answer → connected.
+          </p>
+
+          <div class="form">
+            <button id="btnHost" class="btn">Host: Create Offer</button>
+
+            <label style="margin-top:10px;">
+              Offer (send this to friend):
+              <textarea id="offerBox" rows="5" class="ta"></textarea>
+            </label>
+
+            <label style="margin-top:10px;">
+              Paste Offer here (Friend):
+              <textarea id="offerInBox" rows="5" class="ta"></textarea>
+            </label>
+
+            <button id="btnJoin" class="btn" style="margin-top:10px;">Friend: Create Answer</button>
+
+            <label style="margin-top:10px;">
+              Answer (send back to host):
+              <textarea id="answerBox" rows="5" class="ta"></textarea>
+            </label>
+
+            <label style="margin-top:10px;">
+              Paste Answer here (Host):
+              <textarea id="answerInBox" rows="5" class="ta"></textarea>
+            </label>
+
+            <button id="btnFinalize" class="btn" style="margin-top:10px;">Host: Finalize & Start</button>
+
+            <p id="mpStatus" class="muted" style="margin-top:10px;font-size:13px;">Not connected.</p>
+          </div>
         </div>
       </div>
 
       <div class="help">
         <span>SPACE = Pause</span>
         <span>R = Restart</span>
-        <span>Hold A/D or ←/→</span>
+        <span>Shop toggles</span>
       </div>
     </main>
   </div>
