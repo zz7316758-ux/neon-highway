@@ -8,6 +8,7 @@
   const uiCoins = document.getElementById("coins");
   const uiSpeed = document.getElementById("speed");
   const uiP2 = document.getElementById("p2score");
+  const uiCoinBoost = document.getElementById("coinBoost"); // add this in HTML HUD
 
   const overlay = document.getElementById("overlay");
   const gameover = document.getElementById("gameover");
@@ -64,6 +65,55 @@
     ctx.arcTo(x, y + h, x, y, r2);
     ctx.arcTo(x, y, x + w, y, r2);
     ctx.closePath();
+  }
+
+  // ---- Coin boost milestones ----
+  const COIN_MILESTONES = [
+    { score: 5000,  mult: 1.25 },
+    { score: 10000, mult: 1.75 },
+    { score: 15000, mult: 2.25 },
+    { score: 25000, mult: 3.00 },
+  ];
+
+  function getScoreBonusMult(finalScore) {
+    let m = 1.0;
+    for (const ms of COIN_MILESTONES) {
+      if (finalScore >= ms.score) m = ms.mult;
+    }
+    return m;
+  }
+
+  // ---- Popup text system ----
+  const popups = [];
+  function addPopup(text) { popups.push({ text, ttl: 90 }); }
+  function updatePopups() {
+    for (const p of popups) p.ttl--;
+    while (popups.length && popups[0].ttl <= 0) popups.shift();
+  }
+  function drawPopups() {
+    if (!popups.length) return;
+
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.font = "900 26px system-ui, sans-serif";
+
+    const show = popups.slice(-3);
+    for (let i = 0; i < show.length; i++) {
+      const p = show[i];
+      const alpha = clamp(p.ttl / 90, 0, 1);
+      ctx.globalAlpha = alpha;
+
+      ctx.fillStyle = "#00000077";
+      const y = 150 + i * 34;
+      const w = 320, h = 34;
+      rr((canvas.width - w) / 2, y - 26, w, h, 12);
+      ctx.fill();
+
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#e9e9ff";
+      ctx.fillText(p.text, canvas.width / 2, y);
+    }
+    ctx.restore();
   }
 
   // deterministic RNG for multiplayer shared traffic
@@ -176,6 +226,7 @@
   uiBest.textContent = String(best);
   uiCoins.textContent = String(coins);
   uiP2.textContent = "-";
+  if (uiCoinBoost) uiCoinBoost.textContent = "x1.00";
 
   // ---------- DIFFICULTY ----------
   function difficultyConfig() {
@@ -197,7 +248,6 @@
     const d = difficultyConfig();
     laneCount = d.lanes;
 
-    // padding slightly adjusts with more lanes so it still looks nice
     lanePadding = (laneCount >= 6) ? 46 : 54;
 
     roadLeft = lanePadding;
@@ -209,8 +259,8 @@
   function laneCenterX(lane) { return roadLeft + laneWidth * (lane + 0.5); }
   function clampToRoadX(x) {
     const minX = roadLeft + laneWidth * 0.5;
-    const maxX = roadRight - laneWidth * 0.5;
-    return clamp(x, minX, maxX);
+    const maxX = roadRight - lanePadding - laneWidth * -0.5; // safe
+    return clamp(x, minX, roadRight - laneWidth * 0.5);
   }
 
   // ---------- PLAYERS ----------
@@ -234,7 +284,7 @@
     w: 40, h: 98,
     lane: 2,
     x: 0,
-    y: H - 260,      // slightly above so 2 cars are visible and not overlapping
+    y: H - 260,
     targetX: 0,
     smooth: settings.steerSmooth,
     color: "#29d3ff",
@@ -259,26 +309,24 @@
   let t = 0;
   let speedMul = 1.0;
 
-  // traffic
   let spawnTimer = 0;
   let spawnEvery = settings.trafficStart;
   let traffic = [];
 
-  // RNG (for traffic)
   let sharedSeed = null;
-  let rng = Math.random; // replaced when multiplayer starts
+  let rng = Math.random;
 
-  // ---------- MULTIPLAYER (WebRTC copy/paste) ----------
-  let mpMode = "sp"; // sp | host | join | connected-host | connected-join
+  // milestone tracking (popup once)
+  let nextMilestoneIndex = 0;
+
+  // ---------- MULTIPLAYER ----------
+  let mpMode = "sp";
   let pc = null;
   let dc = null;
 
   const rtcConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
   function setMpStatus(txt) { mpStatus.textContent = txt; }
-
-  function mpOpen(){ mpOverlay.classList.add("show"); }
-  function mpClose(){ mpOverlay.classList.remove("show"); }
 
   function mpSend(obj) {
     if (dc && dc.readyState === "open") dc.send(JSON.stringify(obj));
@@ -314,7 +362,6 @@
     try { msg = JSON.parse(ev.data); } catch { return; }
 
     if (msg.type === "start") {
-      // host sends seed + sync t
       sharedSeed = msg.seed >>> 0;
       rng = mulberry32(sharedSeed);
       resetGame(true);
@@ -324,7 +371,6 @@
     }
 
     if (msg.type === "p2") {
-      // opponent state update
       if (typeof msg.score === "number") {
         uiP2.textContent = String(msg.score);
         p2.score = msg.score;
@@ -339,10 +385,8 @@
     }
 
     if (msg.type === "sync") {
-      // soft sync time
       if (typeof msg.t === "number") {
         const dt = msg.t - t;
-        // only adjust if drift is bigger
         if (Math.abs(dt) > 12) t += Math.sign(dt) * 6;
       }
       return;
@@ -368,10 +412,13 @@
     dead = false;
     paused = false;
 
+    nextMilestoneIndex = 0;
+    popups.length = 0;
+    if (uiCoinBoost) uiCoinBoost.textContent = "x1.00";
+
     p1.color = currentCar().color;
     p1.smooth = settings.steerSmooth;
 
-    // lanes default positions
     p1.lane = Math.min(1, laneCount - 1);
     p1.x = laneCenterX(p1.lane);
     p1.targetX = p1.x;
@@ -381,7 +428,6 @@
     p2.x = laneCenterX(p2.lane);
     p2.targetX = p2.x;
 
-    // only show p2 if multiplayer connected/starting
     p2.alive = !!isMultiplayer;
 
     p1.input.leftHeld = false;
@@ -414,22 +460,21 @@
 
     const d = difficultyConfig();
 
-// control-based coin multiplier
-const controlCoinMult = (settings.controls === "mouse") ? 0.5 : 1.25;
+    // coins: mouse is nerfed, keyboard boosted
+    const controlCoinMult = (settings.controls === "mouse") ? 0.5 : 1.25;
 
-// score milestone multiplier
-const scoreBonusMult = (final >= 10000) ? 1.75 : 1.0;
+    // milestone multiplier table
+    const scoreBonusMult = getScoreBonusMult(final);
 
-// final coins
-const earned = Math.max(
-  1,
-  Math.floor((final / 40) * d.coinMult * controlCoinMult * scoreBonusMult)
-);
+    const earned = Math.max(
+      1,
+      Math.floor((final / 40) * d.coinMult * controlCoinMult * scoreBonusMult)
+    );
 
-coins += earned;
-localStorage.setItem(COINS_KEY, String(coins));
-uiCoins.textContent = String(coins);
-earnedCoinsEl.textContent = String(earned);
+    coins += earned;
+    localStorage.setItem(COINS_KEY, String(coins));
+    uiCoins.textContent = String(coins);
+    earnedCoinsEl.textContent = String(earned);
 
     if (final > best) {
       best = final;
@@ -439,7 +484,6 @@ earnedCoinsEl.textContent = String(earned);
 
     gameover.classList.add("show");
 
-    // in multiplayer, tell other side you died
     if (mpMode.startsWith("connected")) {
       mpSend({ type:"p2", alive:false, score: p1.score, x: p1.x });
     }
@@ -450,7 +494,7 @@ earnedCoinsEl.textContent = String(earned);
     paused = !paused;
   }
 
-  // ---------- TRAFFIC (deterministic when rng is seeded) ----------
+  // ---------- TRAFFIC ----------
   function rand(a, b) { return a + (rng() * (b - a)); }
   function randi(a, bExclusive) { return Math.floor(rand(a, bExclusive)); }
 
@@ -570,92 +614,98 @@ earnedCoinsEl.textContent = String(earned);
     }
   }
 
-  function handleMouseSteering(player) {
-    if (player.mouseX == null) return;
-    player.targetX = clampToRoadX(player.mouseX);
-  }
-
   // ---------- UPDATE LOOP ----------
   function update() {
     if (!running || paused) return;
 
     t++;
 
-    // speed grows from base (difficulty startSpeed)
     const baseStart = difficultyConfig().startSpeed;
     const growth = (t / 2400);
     speedMul = clamp(baseStart + growth, baseStart, 3.0);
 
-    // traffic ramp (mouse mode = harder)
-let targetSpawn = clamp(
-  settings.trafficStart - (speedMul - 1) * 18,
-  22,
-  settings.trafficStart
-);
+    // traffic ramp (mouse mode = MUCH harder)
+    let targetSpawn = clamp(
+      settings.trafficStart - (speedMul - 1) * 18,
+      22,
+      settings.trafficStart
+    );
 
-// If mouse follow is enabled, increase difficulty:
-// - smaller spawnEvery => more cars
-// - more chance of extra spawns
-const mouseHard = (settings.controls === "mouse");
-if (mouseHard) {
-  targetSpawn = Math.max(14, targetSpawn * 0.65); // ~35% more traffic (and can go even lower)
-}
+    const mouseHard = (settings.controls === "mouse");
+    if (mouseHard) {
+      targetSpawn = Math.max(14, targetSpawn * 0.65);
+    }
 
-spawnEvery += (targetSpawn - spawnEvery) * 0.03; // reacts faster to difficulty changes
+    spawnEvery += (targetSpawn - spawnEvery) * 0.03;
 
-spawnTimer++;
-if (spawnTimer >= spawnEvery) {
-  spawnTimer = 0;
+    spawnTimer++;
+    if (spawnTimer >= spawnEvery) {
+      spawnTimer = 0;
+      spawnCar();
 
-  spawnCar();
+      const p1Extra = mouseHard ? 0.28 : 0.10;
+      const p2Extra = mouseHard ? 0.40 : 0.14;
 
-  // extra spawns
-  const p1Extra = mouseHard ? 0.28 : 0.10;
-  const p2Extra = mouseHard ? 0.40 : 0.14;
+      if (t > 450 && rng() < p1Extra) spawnCar();
+      if (t > 900 && rng() < p2Extra) spawnCar();
+    }
 
-  if (t > 450 && rng() < p1Extra) spawnCar();
-  if (t > 900 && rng() < p2Extra) spawnCar();
-}
+    // control mode
+    if (settings.controls === "keyboard") {
+      handleKeyboardSteering(p1);
+      p1.smooth = settings.steerSmooth;
+      p1.x += (p1.targetX - p1.x) / p1.smooth;
+    } else {
+      // TRUE mouse follow: instant position
+      if (p1.mouseX != null) {
+        const mx = clampToRoadX(p1.mouseX);
+        p1.x = mx;
+        p1.targetX = mx;
+      }
+    }
 
-  // control mode
-if (settings.controls === "keyboard") {
-  handleKeyboardSteering(p1);
-
-  // smooth lane movement
-  p1.smooth = settings.steerSmooth;
-  p1.x += (p1.targetX - p1.x) / p1.smooth;
-
-} else {
-  // MOUSE FOLLOW = instant tracking (feels 1:1 with your mouse)
-  if (p1.mouseX != null) {
-    const mx = clampToRoadX(p1.mouseX);
-    p1.x = mx;
-    p1.targetX = mx; // keep consistent
-  }
-}
-
-    // opponent smoothing (always smooth)
+    // opponent smoothing
     if (p2.alive) {
       p2.smooth = settings.steerSmooth + 4;
       p2.x += (p2.targetX - p2.x) / p2.smooth;
     }
 
-    // traffic move
-    const baseVy = 9.3 * speedMul;
+    // traffic move (mouse mode faster)
+    let baseVy = 9.3 * speedMul;
+    if (mouseHard) baseVy *= 1.25;
+
     for (const c of traffic) {
-      c.vy = clamp(c.vy, baseVy * 0.85, baseVy * 1.25);
+      c.vy = clamp(c.vy, baseVy * 0.90, baseVy * 1.45);
       c.y += c.vy;
     }
     traffic = traffic.filter(c => c.y < H + c.h + 40);
 
-    // score
+    // score rate
     const effectiveScoreRate = (settings.controls === "mouse") ? 0.60 : settings.scoreRate;
 
-p1.score += effectiveScoreRate * speedMul;
-uiScore.textContent = String(Math.floor(p1.score));
-uiSpeed.textContent = speedMul.toFixed(1) + "x";
+    p1.score += effectiveScoreRate * speedMul;
+    const currentScore = Math.floor(p1.score);
 
-    // collisions (only p1 ends your game)
+    uiScore.textContent = String(currentScore);
+    uiSpeed.textContent = speedMul.toFixed(1) + "x";
+
+    // milestone popups (once)
+    while (nextMilestoneIndex < COIN_MILESTONES.length &&
+           currentScore >= COIN_MILESTONES[nextMilestoneIndex].score) {
+      const mult = COIN_MILESTONES[nextMilestoneIndex].mult;
+      addPopup(`COIN BOOST x${mult.toFixed(2)}!`);
+      nextMilestoneIndex++;
+    }
+
+    // HUD boost indicator
+    if (uiCoinBoost) {
+      const m = getScoreBonusMult(currentScore);
+      uiCoinBoost.textContent = `x${m.toFixed(2)}`;
+    }
+
+    updatePopups();
+
+    // collisions
     const pRect = { x: p1.x, y: p1.y, w: p1.w, h: p1.h };
     for (const c of traffic) {
       const cRect = { x: c.x, y: c.y, w: c.w, h: c.h };
@@ -678,9 +728,10 @@ uiSpeed.textContent = speedMul.toFixed(1) + "x";
     drawBackground();
     for (const c of traffic) drawCar(c.x, c.y, c.w, c.h, c.color);
 
-    // draw opponent first so you are “on top”
     if (p2.alive) drawCar(p2.x, p2.y, p2.w, p2.h, p2.color);
     drawCar(p1.x, p1.y, p1.w, p1.h, p1.color);
+
+    drawPopups();
 
     if (paused && !dead) {
       ctx.save();
@@ -860,7 +911,6 @@ uiSpeed.textContent = speedMul.toFixed(1) + "x";
   // ---------- OVERLAY HELPERS ----------
   function show(el){ el.classList.add("show"); }
   function hide(el){ el.classList.remove("show"); }
-  function toggle(el){ el.classList.toggle("show"); }
 
   // ---------- SHOP TOGGLE ----------
   function shopIsOpen(){ return shopOverlay.classList.contains("show"); }
@@ -869,7 +919,6 @@ uiSpeed.textContent = speedMul.toFixed(1) + "x";
   function shopToggle(){ shopIsOpen() ? shopClose() : shopOpen(); }
 
   // ---------- INPUTS ----------
-  // keyboard for P1
   window.addEventListener("keydown", (e) => {
     if (settings.controls === "keyboard") {
       if (e.code === "ArrowLeft" || e.code === "KeyA") p1.input.leftHeld = true;
@@ -897,19 +946,18 @@ uiSpeed.textContent = speedMul.toFixed(1) + "x";
     if (e.code === "ArrowRight" || e.code === "KeyD") p1.input.rightHeld = false;
   });
 
-  // mouse follow (for P1)
+  // mouse follow (P1)
   canvas.addEventListener("mousemove", (e) => {
     if (settings.controls !== "mouse") return;
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left) * (W / rect.width);
     p1.mouseX = x;
   });
-
   canvas.addEventListener("mouseleave", () => {
     if (settings.controls === "mouse") p1.mouseX = null;
   });
 
-  // touch follow (also works with mouse mode)
+  // touch follow
   canvas.addEventListener("touchstart", (e) => {
     if (settings.controls !== "mouse") return;
     const t0 = e.changedTouches[0];
@@ -932,7 +980,6 @@ uiSpeed.textContent = speedMul.toFixed(1) + "x";
 
   // ---------- BUTTONS ----------
   btnRestart.addEventListener("click", () => startSingle());
-
   btnStartSingle.addEventListener("click", () => startSingle());
 
   btnStartMulti.addEventListener("click", () => {
@@ -971,7 +1018,6 @@ uiSpeed.textContent = speedMul.toFixed(1) + "x";
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     applyCanvasScale();
 
-    // apply road + sizes immediately (next reset will fully apply)
     recomputeRoad();
     applyCarSizes();
 
@@ -989,8 +1035,7 @@ uiSpeed.textContent = speedMul.toFixed(1) + "x";
 
     dc.onopen = () => {
       mpMode = "connected-host";
-      setMpStatus("Connected as HOST. Click 'Finalize & Start' to start after you paste Answer.");
-      // note: host starts only after finalize button for clarity
+      setMpStatus("Connected as HOST. Paste Answer then Finalize & Start.");
     };
     dc.onmessage = onMpMessage;
 
@@ -1034,7 +1079,6 @@ uiSpeed.textContent = speedMul.toFixed(1) + "x";
   });
 
   btnFinalize.addEventListener("click", async () => {
-    // HOST finalizes with Answer then starts game with shared seed
     if (!pc || mpMode !== "host") { setMpStatus("You must be Host."); return; }
 
     const ansStr = answerInBox.value.trim();
@@ -1045,17 +1089,14 @@ uiSpeed.textContent = speedMul.toFixed(1) + "x";
 
     await pc.setRemoteDescription(ansDesc);
 
-    // start multiplayer match with shared seed
     sharedSeed = (Math.random() * 2**32) >>> 0;
     rng = mulberry32(sharedSeed);
 
-    // enable p2 locally
     p2.alive = true;
 
     resetGame(true);
     startGameInternal();
 
-    // tell join to start with same seed
     mpSend({ type:"start", seed: sharedSeed });
 
     hide(mpOverlay);
@@ -1080,7 +1121,6 @@ uiSpeed.textContent = speedMul.toFixed(1) + "x";
     recomputeRoad();
     applyCarSizes();
 
-    // initial positions
     resetGame(false);
     render();
     loop();
