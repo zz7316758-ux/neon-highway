@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>Neon Highway Runner</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="wrap">
+    <header class="topbar">
+      <div class="brand">🚗 Neon Highway</div>
+
+      <div class="hud">
+        <div class="pill">Score: <span id="score">0</span></div>
+        <div class="pill">Best: <span id="best">0</span></div>
+        <div class="pill">Coins: <span id="coins">0</span></div>
+        <div class="pill">Speed: <span id="speed">1.0x</span></div>
+      </div>
+
+      <div class="actions">
+        <button id="btnShop" class="miniBtn">Shop</button>
+        <button id="btnSettings" class="miniBtn">Settings</button>
+      </div>
+    </header>
+
+    <main class="stage">
+      <canvas id="game" width="420" height="720"></canvas>
+
+      <div id="overlay" class="overlay show">
+        <div class="card">
+          <h1>Neon Highway</h1>
+          <p class="muted">
+            Hold <b>A/D</b> or <b>←/→</b> to steer. <b>SPACE</b> pause. <b>R</b> restart.
+            Mouse/touch: hold left/right side of the game.
+          </p>
+          <button id="btnStart" class="btn">Play</button>
+        </div>
+      </div>
+
+      <div id="gameover" class="overlay">
+        <div class="card">
+          <h2>Game Over</h2>
+          <p>Score: <b id="finalScore">0</b></p>
+          <p>Coins earned: <b id="earnedCoins">0</b></p>
+          <button id="btnRestart" class="btn">Restart</button>
+        </div>
+      </div>
+
+      <div id="settings" class="overlay">
+        <div class="card">
+          <div class="row">
+            <h2>Settings</h2>
+            <button id="btnCloseSettings" class="miniBtn">Close</button>
+          </div>
+
+          <div class="form">
+            <label>
+              Steering smooth (higher = slower/smoother):
+              <input id="setSteer" type="range" min="14" max="40" step="1" />
+              <span id="setSteerVal" class="val"></span>
+            </label>
+
+            <label>
+              Score rate:
+              <input id="setScoreRate" type="range" min="0.15" max="0.9" step="0.05" />
+              <span id="setScoreRateVal" class="val"></span>
+            </label>
+
+            <label>
+              Traffic at start (higher = fewer cars at start):
+              <input id="setTrafficStart" type="range" min="70" max="140" step="5" />
+              <span id="setTrafficStartVal" class="val"></span>
+            </label>
+
+            <label>
+              Canvas scale:
+              <input id="setScale" type="range" min="0.75" max="1.25" step="0.05" />
+              <span id="setScaleVal" class="val"></span>
+            </label>
+
+            <button id="btnSaveSettings" class="btn">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="shop" class="overlay">
+        <div class="card">
+          <div class="row">
+            <h2>Shop</h2>
+            <button id="btnCloseShop" class="miniBtn">Close</button>
+          </div>
+          <p class="muted">Buy cars & map themes with coins. Equip what you own.</p>
+          <div id="shopList" class="shopGrid"></div>
+        </div>
+      </div>
+
+      <div class="help">
+        <span>SPACE = Pause</span>
+        <span>R = Restart</span>
+        <span>Hold A/D or ←/→</span>
+      </div>
+    </main>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
